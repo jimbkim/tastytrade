@@ -385,10 +385,35 @@ class Session:
         response = await self.async_client.get(url, timeout=30, **kwargs)
         return validate_and_parse(response)
 
-    def _get(self, url: str, **kwargs: Any) -> dict[str, Any]:
-        response = self.sync_client.get(url, timeout=30, **kwargs)
-        return validate_and_parse(response)
+#    def _get(self, url: str, **kwargs: Any) -> dict[str, Any]:
+#        response = self.sync_client.get(url, timeout=30, **kwargs)
+#        return validate_and_parse(response)
 
+    
+    def _get(self, url: str, **kwargs: Any) -> dict[str, Any]:
+        max_retries = 5
+        base_delay = 0.5  # in seconds
+        
+        for attempt in range(max_retries + 1):
+            try:
+                response = self.sync_client.get(url, timeout=30, **kwargs)
+                if response.status_code // 100 == 2:
+                    return validate_and_parse(response)
+                elif response.status_code == 429:
+                    # Calculate delay with exponential backoff and jitter
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    time.sleep(delay)
+                else:
+                    # Handle other status codes if necessary
+                    response.raise_for_status()
+            except Exception as e:
+                if attempt == max_retries:
+                    raise e  # Raise the exception on last retry
+                delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                time.sleep(delay)
+        
+        raise Exception("Request failed after all retries")
+    
     async def _a_delete(self, url: str, **kwargs: Any) -> None:
         response = await self.async_client.delete(url, **kwargs)
         validate_response(response)
